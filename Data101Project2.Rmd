@@ -1,0 +1,247 @@
+---
+title: "Data101Project2"
+output: html_document
+---
+
+## Context
+This dataset contains over 80,000 reports of UFO sightings over the last century.
+
+## Content
+This dataset includes 80,332 rows and 11 columns.  The columns represent the date/time of the sighting, the location (city, state and country) of the sighting, the shape of the object, the duration (in hours/minutes/seconds) of the sighting, comments describing the sighting, the date posted, and the latitude and longitude of the sighting.  The reports date back to the 20th century, some older data might be obscured. 
+
+The reports come from the National UFO Reporting Center's (NUFORC's) website. Further information on NUFORC and up-to-date datasets are available here:  <em>http://www.nuforc.org/</em>. 
+
+## Questions
+We decided to look at the data and formulate our own questions, many of which coincide with what the compilers laid out. I will be exploring two questions:  1) Do certain shapes tend to have a longer/shorter duration? and 2) Do certain months tend to have a longer/shorter duration?
+
+#### Acknowledgement
+This dataset was scraped, geolocated, and time standardized from NUFORC data by Sigmond Axel \here <em>https://github.com/planetsig/ufo-reports</em>.  We accessed it from kaggle \here <em>https://www.kaggle.com/NUFORC/ufo-sightings?select=scrubbed.csv</em>.
+
+```{r}
+# load tidyverse to read in data
+
+library("tidyverse")
+ufo_sightings <- read_csv("scrubbed.csv")
+```
+
+Examine the parsing errors
+
+```{r}
+errors <- ufo_sightings[c(27823, 35693, 43783, 58592), ]
+errors
+```
+
+These have errors because of NAs in multiple columns, including two that I'm looking into--shape and duration (seconds). I can repair one of them by adding data into the duration (seconds) column, using what is written in the duration (hours/min) column (1/2 segundo). The two errors that are missing shape info I will have to delete later. The fourth error doesn't concern my data at this point so I will leave it alone.
+
+```{r}
+ufo_sightings[58592, 6] <- .5
+```
+
+
+##### Code to change datetime format
+
+To more easily work with the dates and times in our data, we will convert the datetime column from "character" format to "datetime" format using the lubridate package.
+
+
+```{r}
+library(lubridate)
+
+# convert the "datetime" column into date format from character format
+newufo <- mutate(ufo_sightings, datetime = mdy_hm(ufo_sightings$datetime))
+
+
+```
+
+
+To see patterns by date and by time, we create separate columns for years, months,  hours and minutes (of sighting). I will be examining the "month" column later.
+
+#### Code to create new "year" and "month" columns
+```{r}
+newufo <- mutate(newufo, year = year(datetime))
+newufo <- mutate(newufo, month = month(datetime, label = TRUE))
+newufo <- mutate(newufo, hour = hour(datetime))
+newufo <- mutate(newufo, minute = minute(datetime))
+
+
+```
+
+
+#### Remove the two errors that are missing shape data.
+
+
+Since I couldn't make up shapes for these rows, I deleted them entirely so that I did not end up with NAs once I started working with the data.
+
+
+```{r}
+newufo <- newufo[-c(27823,35693), ]
+```
+
+
+#### Look at the structure, the first few rows, and last few rows of the data.
+
+
+
+```{r}
+str(newufo)
+head(newufo)
+tail(newufo)
+```
+
+
+#### Create two new columns called "duration_hours" and "duration_mins."
+
+
+I created two new columns to show duration in hours and in minutes, using the existing column "duration (seconds)," because the column called "duration (hours/min)" was not uniform in its descriptions and contained lots of text. The "duration (seconds)" column was all numeric, so I was easily able to convert it into hours and minutes columns simply by dividing the seconds by 3600 and 60, respectively.
+
+
+```{r}
+newufo <- mutate(newufo, duration_hours = newufo$`duration (seconds)` / 3600)
+newufo <- mutate(newufo, duration_mins = newufo$`duration (seconds)` / 60)
+```
+
+
+#### Fixing my own mistake
+
+
+While trying to figure out how to round my two new columns to 2 decimal places, I created a couple new columns by accident, which I removed here.
+
+
+```{r}
+newufo$digits <- NULL
+newufo$`round(digits = 2)` <- NULL
+```
+
+
+#### Round the duration_hours and duration_mins columns to 2 decimal places.
+
+
+I did this because the data contained a lot of decimals, making it harder to read and messier to look at.
+
+```{r}
+newufo <- mutate(newufo, across(16:17, round, 2))
+```
+
+
+
+####Look at the average duration in minutes by shape.
+
+I created a dataframe to look at shape and my new column, duration_mins. I took the means of duration and grouped by shape.
+
+```{r}
+df_duration_shape <- newufo %>% 
+select(duration_mins, shape) %>%
+group_by(shape) %>%
+summarise_all(funs(mean))
+df_duration_shape
+```
+
+#### Look at the average duration in descending order
+
+
+At some point while working with my code, the NA under "shape" showed up. It wasn't there at first but then appeared, so I must have messed with something at some point that resulted in NAs coming back. 
+
+Besides that, it is interesting to see that cone shaped sightings had far longer duration on average than all of the other shapes. About 1,000 more minutes on average. This would be interesting to look into further.
+
+```{r}
+df_duration_shape_desc <- df_duration_shape %>%
+  arrange(desc(duration_mins))
+df_duration_shape_desc
+```
+
+
+
+#### Create a barplot for this data
+
+
+If you disregard the NA bar, you can clearly see that cone has a much longer duration than all of the other shapes. 
+
+
+```{r}
+shape_duration_plot <- ggplot(df_duration_shape, aes(shape, duration_mins)) +
+  geom_bar(stat = "identity", fill = "chartreuse3", color = "white")+labs(y = "Duration (Mins)", x = "Shape") + ggtitle("Average Duration in Minutes of UFO Sightings by Shape") +theme(plot.title = element_text(size = 11)) + coord_flip()
+shape_duration_plot
+```
+
+
+
+#### Look at the same data, but now with duration in hours instead of minutes
+
+
+I chose to do this because I wanted to see if the data was easier to digest and comprehend with a different scale of duration.
+
+
+```{r}
+df_hours_shape <- newufo %>% 
+select(duration_hours, shape) %>%
+group_by(shape) %>%
+summarise_all(funs(mean))
+df_hours_shape
+```
+
+#### Create a barplot looking at shape and duration in hours.
+
+
+You can see that the scale of Duration (Hours) is a bit easier to understand, since it goes by increments of 5 hours instead of 500 minutes. I think having more tick marks makes the plot more representative of the data.
+
+
+
+```{r}
+shape_hours_plot <- ggplot(df_hours_shape, aes(shape, duration_hours)) +
+  geom_bar(stat = "identity", fill = "chartreuse3", color = "white")+ labs(y = "Duration (Hours)", x = "Shape") + ggtitle("Average Duration in Hours of UFO Sightings by Shape") +theme(plot.title = element_text(size = 11)) + coord_flip()
+shape_hours_plot
+```
+
+
+####Look at the sum duration in hours by month
+
+I created a dataframe to look at month and my new column, duration_hours. I took the sum of duration and grouped by month. Since I was taking the sum instead of the mean, I chose to use duration of hours since I knew the totals would be quite large.
+
+
+```{r}
+df_duration_month <- newufo %>% 
+select(duration_hours, month) %>%
+group_by(month) %>%
+summarise_all(funs(sum))
+df_duration_month
+```
+
+
+#### Create a barplot looking at this data
+
+
+You can see that June, August and October have the greatest total duration in hours of all the months. Perhaps this could be explained by those months have a greater number of sightings--this would be interesting to investigate.
+
+
+```{r}
+month_hours_plot <- ggplot(df_duration_month, aes(month, duration_hours)) +
+  geom_bar(stat = "identity", fill = "chartreuse3", color = "white")+ labs(y = "Duration (Hours)", x = "Month") + ggtitle("Total Duration in Hours of UFO Sightings per Month") +theme(plot.title = element_text(size = 12))
+month_hours_plot
+```
+
+
+
+#### Now look at the average duration in hours by month
+
+
+I was curious to see if there would be noticeable differences in the sums and the averages of the durations each month, so I decided to look at the means as well.
+
+
+```{r}
+df_duration_month2 <- newufo %>% 
+select(duration_hours, month) %>%
+group_by(month) %>%
+summarise_all(funs(mean))
+df_duration_month2
+```
+
+#### Create a barplot looking at the average duration of sightings per month.
+
+
+As you can see, the plots are very similar in appearance, with a couple months being slightly lower/higher than they were in the previous plot, such as August being higher than October in total, but lower than October on average. It would be interesting to look into why these graphs are so similar as well as what caused the few shifts.
+
+```{r}
+month_hours_plot2 <- ggplot(df_duration_month2, aes(month, duration_hours)) +
+  geom_bar(stat = "identity", fill = "chartreuse3", color = "white") + labs(y = "Duration (Hours)", x = "Month") + ggtitle("Average Duration in Hours of UFO Sightings per Month") +theme(plot.title = element_text(size = 12))
+month_hours_plot2
+```
+
